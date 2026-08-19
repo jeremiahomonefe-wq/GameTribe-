@@ -641,6 +641,14 @@
   .ticket-status.show{display:block;}
   .ticket-status.success{background:#e7f7e8; color:#155724;}
   .ticket-status.error{background:#ffe6e2; color:#8d251d;}
+  .payment-confirmation-overlay{display:none;position:fixed;inset:0;z-index:140;padding:20px;background:rgba(28,20,16,.82);align-items:center;justify-content:center;}
+  .payment-confirmation-overlay.active{display:flex;}
+  .payment-confirmation{width:min(100%,460px);padding:34px 26px 28px;border:4px solid var(--ink);border-radius:20px;background:var(--cream);color:var(--ink);text-align:center;box-shadow:0 16px 0 rgba(0,0,0,.28);}
+  .payment-confirmation-mark{width:62px;height:62px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:#2f9d50;color:#fff;font-size:33px;font-weight:700;}
+  .payment-confirmation h2{margin:0;font-family:'Anton',sans-serif;font-size:30px;letter-spacing:.3px;}
+  .payment-confirmation p{margin:12px 0;color:#5e534b;font-size:14px;line-height:1.55;}
+  .payment-ticket-number{display:block;margin:18px 0;padding:13px;border:2px dashed var(--red);border-radius:10px;color:var(--red);font-size:17px;font-weight:700;word-break:break-word;}
+  .payment-confirmation .ticket-pay-btn{margin-top:4px;}
 
   @media (max-width:520px){
     .spin-badge{width:60px;height:60px;bottom:14px;left:14px;}
@@ -800,10 +808,10 @@
     <form class="ticket-form" id="ticketForm">
       <div class="ticket-options" aria-label="Ticket type">
         <button class="ticket-option selected" type="button" data-ticket="early_single" onclick="selectTicket('early_single')">
-          <strong>Early Bird — Single</strong><span>Entry for one person</span><b id="earlySinglePrice">₦5,000</b><em>50 tickets only</em>
+          <strong>Early Bird — Single</strong><span>Entry for one person</span><b id="earlySinglePrice">₦5,000</b>
         </button>
         <button class="ticket-option" type="button" data-ticket="early_group" onclick="selectTicket('early_group')">
-          <strong>Early Bird — Group of 4</strong><span>Entry for four people</span><b id="earlyGroupPrice">₦18,000</b><em>20 groups only</em>
+          <strong>Early Bird — Group of 4</strong><span>Entry for four people</span><b id="earlyGroupPrice">₦18,000</b>
         </button>
         <button class="ticket-option" type="button" data-ticket="wave_single" onclick="selectTicket('wave_single')">
           <strong>First Wave — Single</strong><span>Entry for one person</span><b id="waveSinglePrice">₦7,000</b>
@@ -823,14 +831,24 @@
   </div>
 </div>
 
+<div class="payment-confirmation-overlay" id="paymentConfirmationOverlay" aria-hidden="true">
+  <div class="payment-confirmation" role="dialog" aria-modal="true" aria-labelledby="paymentConfirmationTitle">
+    <div class="payment-confirmation-mark">✓</div>
+    <h2 id="paymentConfirmationTitle">PAYMENT CONFIRMED</h2>
+    <p>Your Game Tribe spot is reserved. Your ticket details have been sent to your email address.</p>
+    <span class="payment-ticket-number" id="paymentTicketNumber"></span>
+    <button class="ticket-pay-btn" type="button" onclick="closePaymentConfirmation()">Done</button>
+  </div>
+</div>
+
 <script src="https://js.paystack.co/v2/inline.js"></script>
 
 <script>
   /* Add your Paystack public key before publishing. Amounts are in Naira. */
   var TICKET_SETTINGS = {
     paystackPublicKey: 'pk_test_d3360a01bd86b9670713b9c5096b290902cda4a9',
-    early_single: { label: 'Early Bird — Single', quantity: 1, price: 5000, limit: 50 },
-    early_group: { label: 'Early Bird — Group of 4', quantity: 4, price: 18000, limit: 20 },
+    early_single: { label: 'Early Bird — Single', quantity: 1, price: 5000 },
+    early_group: { label: 'Early Bird — Group of 4', quantity: 4, price: 18000 },
     wave_single: { label: 'First Wave — Single', quantity: 1, price: 7000 },
     wave_group: { label: 'First Wave — Group of 4', quantity: 4, price: 26000 }
   };
@@ -854,6 +872,20 @@
     document.getElementById('ticketModalOverlay').classList.remove('active');
     document.getElementById('ticketModalOverlay').setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+  }
+  function openPaymentConfirmation(ticketNumber){
+    document.getElementById('paymentTicketNumber').textContent = 'Ticket number: ' + ticketNumber;
+    document.getElementById('paymentConfirmationOverlay').classList.add('active');
+    document.getElementById('paymentConfirmationOverlay').setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closePaymentConfirmation(){
+    document.getElementById('paymentConfirmationOverlay').classList.remove('active');
+    document.getElementById('paymentConfirmationOverlay').setAttribute('aria-hidden', 'true');
+    document.getElementById('ticketForm').reset();
+    selectedTicket = 'early_single';
+    updateTicketSummary();
+    closeTicketModal();
   }
   function setTicketStatus(message, type){
     var status = document.getElementById('ticketStatus'); status.textContent = message;
@@ -885,7 +917,8 @@
           button.textContent = 'Verifying payment…';
           verifyPayment(transaction.reference, { name: name, email: email, phone: phone, ticketType: selectedTicket }).then(function(order){
             button.disabled = false; button.textContent = 'Proceed to Payment';
-            setTicketStatus('Payment confirmed. Your ticket number is ' + order.ticketNumber + '. A copy has been sent to ' + email + '.', 'success');
+            closeTicketModal();
+            openPaymentConfirmation(order.ticketNumber);
             fireConfetti(80);
           }).catch(function(){
             button.disabled = false; button.textContent = 'Proceed to Payment';
