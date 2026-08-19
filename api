@@ -1,1 +1,57 @@
+const TICKETS = {
+  early_single: { label: 'Early Bird — Single', amount: 5000 },
+  early_group: { label: 'Early Bird — Group of 4', amount: 18000 },
+  wave_single: { label: 'First Wave — Single', amount: 7000 },
+  wave_group: { label: 'First Wave — Group of 4', amount: 26000 }
+};
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ message: 'Method not allowed.' });
+  }
+
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return res.status(500).json({ message: 'Payment verification is not configured.' });
+  }
+
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  const reference = String(body.reference || '');
+  const requestedType = body.buyer && body.buyer.ticketType;
+
+  if (!reference || !TICKETS[requestedType]) {
+    return res.status(400).json({ message: 'Invalid payment reference or ticket type.' });
+  }
+
+  try {
+    const paystackResponse = await fetch(
+      'https://api.paystack.co/transaction/verify/' + encodeURIComponent(reference),
+      { headers: { Authorization: 'Bearer ' + process.env.PAYSTACK_SECRET_KEY } }
+    );
+    const paystack = await paystackResponse.json();
+    const transaction = paystack.data;
+    const ticket = TICKETS[requestedType];
+
+    if (!paystackResponse.ok || !paystack.status || !transaction || transaction.status !== 'success') {
+      return res.status(400).json({ message: 'Paystack has not confirmed this payment.' });
+    }
+    if (transaction.currency !== 'NGN' || transaction.amount !== ticket.amount * 100) {
+      return res.status(400).json({ message: 'The payment amount does not match this ticket type.' });
+    }
+    if (!transaction.metadata || transaction.metadata.ticket_type !== requestedType) {
+      return res.status(400).json({ message: 'The ticket details do not match the payment.' });
+    }
+
+    // Connect a database and email provider here before launch. Do not use the
+    // function filesystem for orders; Vercel Functions are stateless.
+    return res.status(200).json({
+      verified: true,
+      ticketNumber: 'GT-' + transaction.reference,
+      reference: transaction.reference,
+      ticket: ticket.label
+    });
+  } catch (error) {
+    return res.status(502).json({ message: 'Unable to verify the payment with Paystack.' });
+  }
+}
 
